@@ -111,7 +111,12 @@ class FriendService {
   }) async {
     final senderId = _authService.currentUser?.uid;
     if (senderId == null) return null;
-    
+
+    // Prevent sending request to yourself
+    if (senderId == receiverId) {
+      throw Exception('Cannot send friend request to yourself');
+    }
+
     // Check if already friends or request pending
     final existingRequest = await _checkExistingRequest(senderId, receiverId);
     if (existingRequest != null) return existingRequest;

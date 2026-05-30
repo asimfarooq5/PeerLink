@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/user_model.dart';
+import '../models/friend_request_model.dart';
 import '../services/friend_service.dart';
 import '../services/local_storage_service.dart';
 import '../services/auth_service.dart';
@@ -23,6 +24,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
   late FriendService _friendService;
   List<UserModel> _friends = [];
   List<UserModel> _searchResults = [];
+  List<FriendRequestModel> _pendingRequests = [];
   bool _isLoading = true;
   bool _isSearching = false;
   final _searchController = TextEditingController();
@@ -38,20 +40,60 @@ class _ContactsScreenState extends State<ContactsScreen> {
       widget.authService,
       widget.localStorage,
     );
-    
+
     await _friendService.initialize();
     await _loadFriends();
+
+    // Listen for incoming friend requests
+    _friendService.requestStream.listen((request) {
+      if (mounted) {
+        _loadFriends();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('New friend request received!'),
+            action: SnackBarAction(
+              label: 'View',
+              onPressed: () {
+                // Scroll to requests section
+              },
+            ),
+          ),
+        );
+      }
+    });
   }
 
   Future<void> _loadFriends() async {
     setState(() => _isLoading = true);
-    
+
     final friends = await _friendService.getFriends();
-    
+    final requests = _friendService.getPendingRequests();
+
     setState(() {
       _friends = friends;
+      _pendingRequests = requests;
       _isLoading = false;
     });
+  }
+
+  Future<void> _acceptRequest(String requestId) async {
+    await _friendService.acceptFriendRequest(requestId);
+    await _loadFriends();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Friend request accepted!')),
+      );
+    }
+  }
+
+  Future<void> _rejectRequest(String requestId) async {
+    await _friendService.rejectFriendRequest(requestId);
+    await _loadFriends();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Friend request rejected')),
+      );
+    }
   }
 
   Future<void> _searchUser() async {
@@ -74,12 +116,23 @@ class _ContactsScreenState extends State<ContactsScreen> {
   }
 
   Future<void> _sendFriendRequest(String userId) async {
-    final request = await _friendService.sendFriendRequest(userId);
-    
-    if (request != null && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Friend request sent!')),
-      );
+    try {
+      final request = await _friendService.sendFriendRequest(userId);
+
+      if (request != null && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Friend request sent!')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        final message = e.toString().contains('yourself')
+            ? 'Cannot send request to yourself'
+            : 'Failed to send request: ${e.toString()}';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(message), backgroundColor: Colors.red),
+        );
+      }
     }
   }
 
@@ -155,9 +208,113 @@ class _ContactsScreenState extends State<ContactsScreen> {
           ? const Center(child: CircularProgressIndicator())
           : _searchResults.isNotEmpty
               ? _buildSearchResults()
-              : _friends.isEmpty
-                  ? _buildEmptyState()
-                  : _buildFriendsList(),
+              : _buildMainContent(),
+    );
+  }
+
+  Widget _buildMainContent() {
+    if (_friends.isEmpty && _pendingRequests.isEmpty) {
+      return _buildEmptyState();
+    }
+
+    return ListView(
+      children: [
+        if (_pendingRequests.isNotEmpty) ...[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Text(
+              'Friend Requests (${_pendingRequests.length})',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+            ),
+          ),
+          ..._pendingRequests.map((request) => _buildRequestTile(request)),
+          const Divider(),
+        ],
+        if (_friends.isNotEmpty) ...[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+            child: Text(
+              'Friends',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+            ),
+          ),
+          ..._friends.map((friend) => _buildFriendTile(friend)),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildRequestTile(FriendRequestModel request) {
+    return ListTile(
+      leading: const CircleAvatar(
+        radius: 28,
+        child: Icon(Icons.person_add),
+      ),
+      title: const Text(
+        'New Friend Request',
+        style: TextStyle(fontWeight: FontWeight.w600),
+      ),
+      subtitle: Text('From: ${request.senderId.substring(0, 8)}...'),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            icon: const Icon(Icons.check, color: Colors.green),
+            onPressed: () => _acceptRequest(request.id),
+          ),
+          IconButton(
+            icon: const Icon(Icons.close, color: Colors.red),
+            onPressed: () => _rejectRequest(request.id),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFriendTile(UserModel friend) {
+    return ListTile(
+      leading: CircleAvatar(
+        radius: 28,
+        backgroundImage: friend.photoURL != null
+            ? NetworkImage(friend.photoURL!)
+            : null,
+        child: friend.photoURL == null
+            ? Text(
+                (friend.displayName ?? '?')[0].toUpperCase(),
+                style: const TextStyle(fontSize: 20),
+              )
+            : null,
+      ),
+      title: Text(
+        friend.displayName ?? 'Unknown',
+        style: const TextStyle(fontWeight: FontWeight.w600),
+      ),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (friend.username != null)
+            Text(
+              '@${friend.username}',
+              style: const TextStyle(
+                color: Colors.blue,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          if (friend.phoneNumber != null)
+            Text(
+              friend.phoneNumber!,
+              style: const TextStyle(color: Colors.grey),
+            ),
+        ],
+      ),
+      trailing: ElevatedButton(
+        onPressed: () => _startChat(friend),
+        child: const Text('Message'),
+      ),
     );
   }
 
@@ -197,16 +354,6 @@ class _ContactsScreenState extends State<ContactsScreen> {
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildFriendsList() {
-    return ListView.builder(
-      itemCount: _friends.length,
-      itemBuilder: (context, index) {
-        final friend = _friends[index];
-        return _buildUserTile(friend, isFriend: true);
-      },
     );
   }
 

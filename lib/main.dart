@@ -118,13 +118,25 @@ class _AuthWrapperState extends State<AuthWrapper> {
 
     setState(() => _checkingUsername = true);
 
-    final username = await _userService.getUsername(user.uid);
+    try {
+      final username = await _userService.getUsername(user.uid);
 
-    if (mounted) {
-      setState(() {
-        _hasUsername = username != null && username.isNotEmpty;
-        _checkingUsername = false;
-      });
+      if (mounted) {
+        setState(() {
+          _hasUsername = username != null && username.isNotEmpty;
+          _checkingUsername = false;
+        });
+      }
+    } catch (e) {
+      // If Firestore is unavailable, assume username is needed
+      // This prevents app from getting stuck on loading
+      if (mounted) {
+        setState(() {
+          _hasUsername = false;
+          _checkingUsername = false;
+        });
+      }
+
     }
   }
 
