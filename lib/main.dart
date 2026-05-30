@@ -96,6 +96,55 @@ class AuthWrapper extends StatelessWidget {
   });
 
   @override
+<<<<<<< Updated upstream
+=======
+  State<AuthWrapper> createState() => _AuthWrapperState();
+}
+
+class _AuthWrapperState extends State<AuthWrapper> {
+  final UserService _userService = UserService();
+  bool _checkingUsername = false;
+  bool? _hasUsername;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkUsername();
+  }
+
+  Future<void> _checkUsername() async {
+    final user = widget.authService.currentUser;
+    if (user == null) return;
+
+    setState(() => _checkingUsername = true);
+
+    try {
+      final username = await _userService.getUsername(user.uid);
+
+      if (mounted) {
+        setState(() {
+          _hasUsername = username != null && username.isNotEmpty;
+          _checkingUsername = false;
+        });
+      }
+    } catch (e) {
+      // If Firestore is unavailable, assume username is needed
+      // This prevents app from getting stuck on loading
+      if (mounted) {
+        setState(() {
+          _hasUsername = false;
+          _checkingUsername = false;
+        });
+      }
+    }
+  }
+
+  void _onUsernameSet() {
+    setState(() => _hasUsername = true);
+  }
+
+  @override
+>>>>>>> Stashed changes
   Widget build(BuildContext context) {
     return StreamBuilder(
       stream: authService.authStateChanges,
