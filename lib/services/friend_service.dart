@@ -57,14 +57,51 @@ class FriendService {
         .where('phoneNumber', isEqualTo: phoneNumber)
         .limit(1)
         .get();
-    
+
     if (snapshot.docs.isEmpty) return null;
-    
+
     final data = snapshot.docs.first.data();
     return UserModel.fromJson({
       'uid': snapshot.docs.first.id,
       ...data,
     });
+  }
+
+  // Search user by username
+  Future<UserModel?> searchByUsername(String username) async {
+    final normalizedUsername = username.toLowerCase().trim();
+
+    final snapshot = await _firestore
+        .collection('users')
+        .where('username', isEqualTo: normalizedUsername)
+        .limit(1)
+        .get();
+
+    if (snapshot.docs.isEmpty) return null;
+
+    final data = snapshot.docs.first.data();
+    return UserModel.fromJson({
+      'uid': snapshot.docs.first.id,
+      ...data,
+    });
+  }
+
+  // Search user by phone or username
+  Future<UserModel?> searchUser(String query) async {
+    final trimmedQuery = query.trim();
+
+    // Try phone number search first (if query starts with + or is all digits)
+    if (trimmedQuery.startsWith('+') || RegExp(r'^\d+$').hasMatch(trimmedQuery)) {
+      final phoneResult = await searchByPhoneNumber(trimmedQuery);
+      if (phoneResult != null) return phoneResult;
+    }
+
+    // Try username search (remove @ if present)
+    final usernameQuery = trimmedQuery.startsWith('@')
+        ? trimmedQuery.substring(1)
+        : trimmedQuery;
+
+    return await searchByUsername(usernameQuery);
   }
 
   // Send friend request

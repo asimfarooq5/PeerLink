@@ -4,8 +4,10 @@ import 'firebase_options.dart';
 import 'services/auth_service.dart';
 import 'services/local_storage_service.dart';
 import 'services/security_service.dart';
+import 'services/user_service.dart';
 import 'screens/login_screen.dart';
 import 'screens/chat_list_screen.dart';
+import 'screens/username_setup_screen.dart';
 import 'widgets/app_lock_wrapper.dart';
 
 void main() async {
@@ -85,7 +87,7 @@ class MyApp extends StatelessWidget {
   }
 }
 
-class AuthWrapper extends StatelessWidget {
+class AuthWrapper extends StatefulWidget {
   final AuthService authService;
   final LocalStorageService localStorage;
 
@@ -96,8 +98,6 @@ class AuthWrapper extends StatelessWidget {
   });
 
   @override
-<<<<<<< Updated upstream
-=======
   State<AuthWrapper> createState() => _AuthWrapperState();
 }
 
@@ -136,6 +136,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
           _checkingUsername = false;
         });
       }
+
     }
   }
 
@@ -144,27 +145,34 @@ class _AuthWrapperState extends State<AuthWrapper> {
   }
 
   @override
->>>>>>> Stashed changes
   Widget build(BuildContext context) {
     return StreamBuilder(
-      stream: authService.authStateChanges,
+      stream: widget.authService.authStateChanges,
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
+        if (snapshot.connectionState == ConnectionState.waiting || _checkingUsername) {
           return const Scaffold(
             body: Center(
               child: CircularProgressIndicator(),
             ),
           );
         }
-        
+
         if (snapshot.hasData && snapshot.data != null) {
+          if (_hasUsername == false) {
+            return UsernameSetupScreen(
+              authService: widget.authService,
+              userService: _userService,
+              onComplete: _onUsernameSet,
+            );
+          }
+
           return ChatListScreen(
-            localStorage: localStorage,
-            authService: authService,
+            localStorage: widget.localStorage,
+            authService: widget.authService,
           );
         }
-        
-        return LoginScreen(authService: authService);
+
+        return LoginScreen(authService: widget.authService);
       },
     );
   }

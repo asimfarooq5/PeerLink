@@ -76,12 +76,6 @@ class _ContactsScreenState extends State<ContactsScreen> {
     });
   }
 
-<<<<<<< Updated upstream
-  Future<void> _searchByPhone() async {
-    final phoneNumber = _searchController.text.trim();
-    if (phoneNumber.isEmpty) return;
-    
-=======
   Future<void> _acceptRequest(String requestId) async {
     await _friendService.acceptFriendRequest(requestId);
     await _loadFriends();
@@ -106,14 +100,13 @@ class _ContactsScreenState extends State<ContactsScreen> {
     final query = _searchController.text.trim();
     if (query.isEmpty) return;
 
->>>>>>> Stashed changes
     setState(() {
       _isSearching = true;
       _searchResults = [];
     });
-    
-    final user = await _friendService.searchByPhoneNumber(phoneNumber);
-    
+
+    final user = await _friendService.searchUser(query);
+
     setState(() {
       if (user != null) {
         _searchResults = [user];
@@ -176,19 +169,27 @@ class _ContactsScreenState extends State<ContactsScreen> {
             child: TextField(
               controller: _searchController,
               decoration: InputDecoration(
-                hintText: 'Search by phone number...',
+                hintText: 'Search by username or phone...',
                 prefixIcon: const Icon(Icons.search),
-                suffixIcon: _searchController.text.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear),
-                        onPressed: () {
-                          _searchController.clear();
-                          setState(() {
-                            _searchResults = [];
-                          });
-                        },
+                suffixIcon: _isSearching
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: Center(
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
                       )
-                    : null,
+                    : _searchController.text.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear),
+                            onPressed: () {
+                              _searchController.clear();
+                              setState(() {
+                                _searchResults = [];
+                              });
+                            },
+                          )
+                        : null,
                 filled: true,
                 fillColor: Theme.of(context).cardColor,
                 border: OutlineInputBorder(
@@ -196,8 +197,9 @@ class _ContactsScreenState extends State<ContactsScreen> {
                   borderSide: BorderSide.none,
                 ),
               ),
-              keyboardType: TextInputType.phone,
-              onSubmitted: (_) => _searchByPhone(),
+              keyboardType: TextInputType.text,
+              textInputAction: TextInputAction.search,
+              onSubmitted: (_) => _searchUser(),
             ),
           ),
         ),
@@ -336,7 +338,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
           ),
           const SizedBox(height: 8),
           const Text(
-            'Search by phone number to find friends',
+            'Search by username or phone to find friends',
             style: TextStyle(
               fontSize: 14,
               color: Colors.grey,
@@ -400,9 +402,28 @@ class _ContactsScreenState extends State<ContactsScreen> {
         user.displayName ?? 'Unknown',
         style: const TextStyle(fontWeight: FontWeight.w600),
       ),
-      subtitle: Text(
-        user.phoneNumber ?? 'No phone number',
-        style: const TextStyle(color: Colors.grey),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (user.username != null)
+            Text(
+              '@${user.username}',
+              style: const TextStyle(
+                color: Colors.blue,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          if (user.phoneNumber != null)
+            Text(
+              user.phoneNumber!,
+              style: const TextStyle(color: Colors.grey),
+            ),
+          if (user.username == null && user.phoneNumber == null)
+            const Text(
+              'No contact info',
+              style: TextStyle(color: Colors.grey),
+            ),
+        ],
       ),
       trailing: isFriend
           ? ElevatedButton(
