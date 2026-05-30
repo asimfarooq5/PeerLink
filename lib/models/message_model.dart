@@ -2,20 +2,33 @@ import 'package:hive/hive.dart';
 
 part 'message_model.g.dart';
 
+@HiveType(typeId: 10)
 enum MessageType {
+  @HiveField(0)
   text,
+  @HiveField(1)
   image,
+  @HiveField(2)
   video,
+  @HiveField(3)
   audio,
+  @HiveField(4)
   file,
+  @HiveField(5)
   location,
 }
 
+@HiveType(typeId: 11)
 enum MessageStatus {
+  @HiveField(0)
   sending,
+  @HiveField(1)
   sent,
+  @HiveField(2)
   delivered,
+  @HiveField(3)
   read,
+  @HiveField(4)
   failed,
 }
 

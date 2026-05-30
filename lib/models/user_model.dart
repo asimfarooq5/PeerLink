@@ -28,6 +28,9 @@ class UserModel extends HiveObject {
   @HiveField(7)
   final String? publicKey;
 
+  @HiveField(8)
+  final String? username;
+
   UserModel({
     required this.uid,
     this.phoneNumber,
@@ -37,6 +40,7 @@ class UserModel extends HiveObject {
     this.isOnline = false,
     this.lastSeen,
     this.publicKey,
+    this.username,
   });
 
   factory UserModel.fromJson(Map<String, dynamic> json) {
@@ -47,10 +51,11 @@ class UserModel extends HiveObject {
       photoURL: json['photoURL'] as String?,
       fcmToken: json['fcmToken'] as String?,
       isOnline: json['isOnline'] as bool? ?? false,
-      lastSeen: json['lastSeen'] != null 
+      lastSeen: json['lastSeen'] != null
           ? DateTime.fromMillisecondsSinceEpoch(json['lastSeen'] as int)
           : null,
       publicKey: json['publicKey'] as String?,
+      username: json['username'] as String?,
     );
   }
 
@@ -64,6 +69,7 @@ class UserModel extends HiveObject {
       'isOnline': isOnline,
       'lastSeen': lastSeen?.millisecondsSinceEpoch,
       'publicKey': publicKey,
+      'username': username,
     };
   }
 
@@ -76,6 +82,7 @@ class UserModel extends HiveObject {
     bool? isOnline,
     DateTime? lastSeen,
     String? publicKey,
+    String? username,
   }) {
     return UserModel(
       uid: uid ?? this.uid,
@@ -86,6 +93,7 @@ class UserModel extends HiveObject {
       isOnline: isOnline ?? this.isOnline,
       lastSeen: lastSeen ?? this.lastSeen,
       publicKey: publicKey ?? this.publicKey,
+      username: username ?? this.username,
     );
   }
 }

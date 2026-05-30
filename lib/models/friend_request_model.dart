@@ -2,10 +2,15 @@ import 'package:hive/hive.dart';
 
 part 'friend_request_model.g.dart';
 
+@HiveType(typeId: 12)
 enum RequestStatus {
+  @HiveField(0)
   pending,
+  @HiveField(1)
   accepted,
+  @HiveField(2)
   rejected,
+  @HiveField(3)
   blocked,
 }
 
