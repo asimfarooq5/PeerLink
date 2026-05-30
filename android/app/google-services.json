@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "771678564230",
+    "project_id": "p2pchatapp-c16b8",
+    "storage_bucket": "p2pchatapp-c16b8.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:771678564230:android:91ac94a950914b63f78607",
+        "android_client_info": {
+          "package_name": "io.peerlink.peerlink"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "771678564230-gafbajs5skjcd0gqmfn12dnn872eja9l.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "io.peerlink.peerlink",
+            "certificate_hash": ""
+          }
+        },
+        {
+          "client_id": "771678564230-gafbajs5skjcd0gqmfn12dnn872eja9l.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAqLSe8l9Y1QnPQLlsfN7LtrlZeYR-MgKo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "771678564230-i81kr16cq8rhs01p9mjvl8vmtuogqok7.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
