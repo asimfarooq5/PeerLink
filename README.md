@@ -190,4 +190,3 @@ Files are chunked (16KB) and sent via WebRTC data channels:
 ## License
 
 MIT License - See LICENSE file
-# PeerLink
