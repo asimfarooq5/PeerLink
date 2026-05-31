@@ -111,10 +111,13 @@ class SignalingService {
           final data = change.doc.data();
           if (data != null) {
             final message = SignalingMessage.fromJson(data);
-            _signalController.add(message);
-            
-            // Delete processed message
+            // Always delete from Firestore
             change.doc.reference.delete();
+            // Discard stale messages from previous sessions (> 30 s old)
+            if (DateTime.now().difference(message.timestamp).inSeconds > 30) {
+              continue;
+            }
+            _signalController.add(message);
           }
         }
       }

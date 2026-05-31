@@ -60,7 +60,17 @@ class WebRTCService {
     await _createPeerConnection();
   }
 
+  // Whether the peer connection exists and is not yet torn down
+  bool get hasActivePeerConnection => _peerConnection != null;
+
   Future<void> _teardown() async {
+    // Null out callbacks BEFORE closing so the old peer connection
+    // cannot fire events on streams that may be closed after dispose()
+    if (_peerConnection != null) {
+      _peerConnection!.onConnectionState = null;
+      _peerConnection!.onIceCandidate = null;
+      _peerConnection!.onDataChannel = null;
+    }
     await _dataChannel?.close();
     await _peerConnection?.close();
     _peerConnection = null;
@@ -72,15 +82,20 @@ class WebRTCService {
     _peerConnection = await createPeerConnection(_configuration);
 
     _peerConnection!.onConnectionState = (state) {
-      _connectionStateController.add(state);
-      if (state == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected ||
-          state == RTCPeerConnectionState.RTCPeerConnectionStateFailed) {
+      if (!_connectionStateController.isClosed) {
+        _connectionStateController.add(state);
+      }
+      // DISCONNECTED is temporary — WebRTC can self-recover from it.
+      // Only treat FAILED as a terminal state that requires reconnection.
+      if (state == RTCPeerConnectionState.RTCPeerConnectionStateFailed) {
         _handleConnectionLost();
       }
     };
 
     _peerConnection!.onIceCandidate = (candidate) {
-      _iceCandidateController.add(candidate);
+      if (!_iceCandidateController.isClosed) {
+        _iceCandidateController.add(candidate);
+      }
     };
 
     _peerConnection!.onDataChannel = (channel) {
@@ -90,8 +105,7 @@ class WebRTCService {
   }
 
   void _handleConnectionLost() {
-    // Emit before teardown so the UI updates before the stream closes
-    _reconnectController.add(null);
+    if (!_reconnectController.isClosed) _reconnectController.add(null);
     _teardown();
   }
 
@@ -154,9 +168,11 @@ class WebRTCService {
     if (data.isBinary) {
       _handleBinaryData(data.binary);
     } else {
-      final json = jsonDecode(data.text);
-      final message = MessageModel.fromJson(json);
-      _messageController.add(message);
+      if (!_messageController.isClosed) {
+        final json = jsonDecode(data.text);
+        final message = MessageModel.fromJson(json);
+        _messageController.add(message);
+      }
     }
   }
 

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
@@ -60,18 +61,29 @@ class ChatService {
     });
   }
 
+  // The device with the lexicographically higher UID is always the offerer.
+  // This prevents both sides from creating offers simultaneously (glare).
+  bool _isDesignatedOfferer(String peerId) {
+    final myUid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    return myUid.compareTo(peerId) > 0;
+  }
+
   Future<void> connectToPeer(String peerId) async {
-    _isInitiator = true;
     _currentPeerId = peerId;
     await _signalingService.sendWakeup(peerId);
     await _webRTCService.initialize();
-    final offer = await _webRTCService.createOffer();
-    await _signalingService.sendOffer(peerId, offer);
+
+    if (_isDesignatedOfferer(peerId)) {
+      _isInitiator = true;
+      final offer = await _webRTCService.createOffer();
+      await _signalingService.sendOffer(peerId, offer);
+    }
+    // Non-offerer just initializes and waits for the other side's offer
   }
 
   Future<void> _reconnect() async {
     final peerId = _currentPeerId;
-    if (peerId == null) return;
+    if (peerId == null || !_isInitiator) return;
     try {
       await _signalingService.sendWakeup(peerId);
       await _webRTCService.initialize();
@@ -143,10 +155,23 @@ class ChatService {
   }
 
   Future<void> _handleWakeup(String senderId) async {
-    // Prepare to receive an offer from the initiator — do NOT create an
-    // offer here; that would cause both sides to offer simultaneously.
-    if (_currentPeerId == senderId) {
+    if (_currentPeerId == null) {
+      _currentPeerId = senderId;
       await _webRTCService.initialize();
+    }
+    // Re-offer only if we are the designated offerer AND our peer connection
+    // was already torn down (peer disconnected and came back). If we still
+    // have an active connection, the wakeup was just the normal handshake
+    // that fires at the start — don't create a duplicate offer.
+    if (_isDesignatedOfferer(senderId) &&
+        _currentPeerId == senderId &&
+        !_webRTCService.hasActivePeerConnection) {
+      _isInitiator = true;
+      try {
+        await _webRTCService.initialize();
+        final offer = await _webRTCService.createOffer();
+        await _signalingService.sendOffer(senderId, offer);
+      } catch (_) {}
     }
   }
 
