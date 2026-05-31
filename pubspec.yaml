@@ -22,7 +22,7 @@ dependencies:
   firebase_messaging: ^16.2.2
   
   # Social authentication
-  google_sign_in: ^7.2.0
+  google_sign_in: ^6.1.6
   flutter_facebook_auth: ^7.0.0
   
   # Local storage with encryption

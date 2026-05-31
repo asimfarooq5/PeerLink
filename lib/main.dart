@@ -14,10 +14,12 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
   // Initialize Firebase
-  if (Firebase.apps.isEmpty) {
+  try {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
+  } on FirebaseException catch (e) {
+    if (e.code != 'duplicate-app') rethrow;
   }
   
   // Initialize local storage

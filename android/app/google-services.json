@@ -23,6 +23,14 @@
           }
         },
         {
+          "client_id": "771678564230-v32vi6mgs6bha7ldg2k6g2jif92s07tq.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "io.peerlink.chat",
+            "certificate_hash": "d120ab7fb49b0283b782b4d433b6ed9fad447b7b"
+          }
+        },
+        {
           "client_id": "771678564230-m1seve0vr3i0ho8akgo30r2h6fdgi1md.apps.googleusercontent.com",
           "client_type": 3
         }
