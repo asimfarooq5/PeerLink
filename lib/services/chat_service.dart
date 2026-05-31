@@ -38,10 +38,17 @@ class ChatService {
   Future<void> initialize() async {
     // Listen for WebRTC messages
     _webRTCService.messageStream.listen(_handleIncomingMessage);
-    
+
     // Listen for signaling
     _signalingService.signalStream.listen(_handleSignalingMessage);
-    
+
+    // Forward ICE candidates to peer via signaling
+    _webRTCService.iceCandidateStream.listen((candidate) {
+      if (_currentPeerId != null) {
+        _signalingService.sendIceCandidate(_currentPeerId!, candidate);
+      }
+    });
+
     // Listen for connection state changes
     _webRTCService.connectionStateStream.listen((state) {
       _connectionStateController.add({
@@ -49,7 +56,7 @@ class ChatService {
         'state': state,
       });
     });
-    
+
     // Listen for file progress
     _webRTCService.fileProgressStream.listen((progress) {
       // Handle file transfer progress

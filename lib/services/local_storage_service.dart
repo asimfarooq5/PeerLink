@@ -72,16 +72,13 @@ class LocalStorageService {
 
   // Messages
   Future<void> saveMessage(MessageModel message) async {
-    // Encrypt content before saving
-    if (message.content != null && message.isEncrypted) {
-      final encrypted = _encrypt(message.content!);
-      message = message.copyWith(content: encrypted);
-    }
-    
-    await _messagesBox.put(message.id, message);
-    
-    // Update session
-    await _updateSessionWithMessage(message);
+    // Store as plaintext — the WebRTC data channel is already DTLS-SRTP encrypted.
+    // Remove the isEncrypted flag so messages don't get double-decrypted on reload.
+    final stored = message.isEncrypted
+        ? message.copyWith(isEncrypted: false)
+        : message;
+    await _messagesBox.put(stored.id, stored);
+    await _updateSessionWithMessage(stored);
   }
 
   Future<MessageModel?> getMessage(String messageId) async {
@@ -98,24 +95,28 @@ class LocalStorageService {
   }
 
   List<MessageModel> getMessagesForChat(String peerId, {int limit = 100}) {
+    final userId = _getCurrentUserId();
     final messages = _messagesBox.values
-        .where((m) => m.senderId == peerId || m.receiverId == peerId)
+        .where((m) =>
+            (m.senderId == peerId || m.receiverId == peerId) &&
+            (userId == null || m.senderId == userId || m.receiverId == userId))
         .toList();
-    
+
     messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
-    
-    // Decrypt messages
+
     return messages.map((m) {
       if (m.content != null && m.isEncrypted) {
+        // Legacy: try to decrypt old encrypted messages
         try {
           final decrypted = _decrypt(m.content!);
-          return m.copyWith(content: decrypted);
-        } catch (e) {
-          return m;
+          return m.copyWith(content: decrypted, isEncrypted: false);
+        } catch (_) {
+          // If decryption fails (e.g. different key), discard encrypted content
+          return m.copyWith(content: '[message]', isEncrypted: false);
         }
       }
       return m;
-    }).toList();
+    }).take(limit).toList();
   }
 
   Future<void> updateMessageStatus(String messageId, MessageStatus status) async {
