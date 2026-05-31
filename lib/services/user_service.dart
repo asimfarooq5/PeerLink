@@ -39,7 +39,7 @@ class UserService {
     try {
       final doc = await _firestore.collection('users').doc(uid).get();
       if (doc.exists && doc.data() != null) {
-        return UserModel.fromJson({'uid': uid, ...doc.data()!});
+        return UserModel.fromJson({...doc.data()!, 'uid': uid});
       }
       return null;
     } catch (e) {

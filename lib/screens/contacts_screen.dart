@@ -66,42 +66,67 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
   Future<void> _loadFriends() async {
     setState(() => _isLoading = true);
+    try {
+      final friends = await _friendService.getFriends();
+      final requests = await _friendService.fetchPendingRequests();
 
-    final friends = await _friendService.getFriends();
-    final requests = await _friendService.fetchPendingRequests();
+      final senders = <String, UserModel>{};
+      for (final request in requests) {
+        final sender = await _friendService.getUserById(request.senderId);
+        if (sender != null) senders[request.senderId] = sender;
+      }
 
-    // Fetch sender info for each request to show names
-    final senders = <String, UserModel>{};
-    for (final request in requests) {
-      final sender = await _friendService.getUserById(request.senderId);
-      if (sender != null) senders[request.senderId] = sender;
+      if (mounted) {
+        setState(() {
+          _friends = friends;
+          _pendingRequests = requests;
+          _requestSenders = senders;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to load: $e'), backgroundColor: Colors.red),
+        );
+      }
     }
-
-    setState(() {
-      _friends = friends;
-      _pendingRequests = requests;
-      _requestSenders = senders;
-      _isLoading = false;
-    });
   }
 
   Future<void> _acceptRequest(String requestId) async {
-    await _friendService.acceptFriendRequest(requestId);
-    await _loadFriends();
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Friend request accepted!')),
-      );
+    try {
+      await _friendService.acceptFriendRequest(requestId);
+      await _loadFriends();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Friend request accepted!')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to accept: $e'), backgroundColor: Colors.red),
+        );
+      }
     }
   }
 
   Future<void> _rejectRequest(String requestId) async {
-    await _friendService.rejectFriendRequest(requestId);
-    await _loadFriends();
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Friend request rejected')),
-      );
+    try {
+      await _friendService.rejectFriendRequest(requestId);
+      await _loadFriends();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Friend request rejected')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to reject: $e'), backgroundColor: Colors.red),
+        );
+      }
     }
   }
 
