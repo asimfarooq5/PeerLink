@@ -107,8 +107,8 @@ class _ChatListScreenState extends State<ChatListScreen> {
                   },
                 ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          Navigator.push(
+        onPressed: () async {
+          await Navigator.push(
             context,
             MaterialPageRoute(
               builder: (context) => ContactsScreen(
@@ -117,6 +117,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
               ),
             ),
           );
+          _loadSessions();
         },
         child: const Icon(Icons.chat),
       ),
@@ -151,8 +152,8 @@ class _ChatListScreenState extends State<ChatListScreen> {
           ),
           const SizedBox(height: 24),
           ElevatedButton.icon(
-            onPressed: () {
-              Navigator.push(
+            onPressed: () async {
+              await Navigator.push(
                 context,
                 MaterialPageRoute(
                   builder: (context) => ContactsScreen(
@@ -161,6 +162,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
                   ),
                 ),
               );
+              _loadSessions();
             },
             icon: const Icon(Icons.person_add),
             label: const Text('Find Contacts'),
@@ -251,8 +253,8 @@ class _ChatListScreenState extends State<ChatListScreen> {
             ),
         ],
       ),
-      onTap: () {
-        Navigator.push(
+      onTap: () async {
+        await Navigator.push(
           context,
           MaterialPageRoute(
             builder: (context) => ChatScreen(
@@ -263,6 +265,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
             ),
           ),
         );
+        _loadSessions();
       },
     );
   }

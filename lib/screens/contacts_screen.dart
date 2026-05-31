@@ -181,7 +181,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
           authService: widget.authService,
         ),
       ),
-    );
+    ).then((_) => _loadFriends());
   }
 
   @override
