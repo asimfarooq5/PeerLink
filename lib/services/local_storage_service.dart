@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:encrypt/encrypt.dart' as encrypt;
 import 'package:crypto/crypto.dart';
@@ -130,11 +131,14 @@ class LocalStorageService {
 
   // Chat Sessions
   Future<void> _updateSessionWithMessage(MessageModel message) async {
-    final peerId = message.senderId == _getCurrentUserId() 
-        ? message.receiverId 
+    final userId = _getCurrentUserId();
+    if (userId == null) return;
+
+    final peerId = message.senderId == userId
+        ? message.receiverId
         : message.senderId;
-    
-    final sessionId = _generateSessionId(_getCurrentUserId()!, peerId);
+
+    final sessionId = _generateSessionId(userId, peerId);
     var session = _sessionsBox.get(sessionId);
     
     if (session == null) {
@@ -165,10 +169,7 @@ class LocalStorageService {
     return sha256.convert(utf8.encode(combined)).toString();
   }
 
-  String? _getCurrentUserId() {
-    // Get from auth service
-    return null;
-  }
+  String? _getCurrentUserId() => FirebaseAuth.instance.currentUser?.uid;
 
   List<ChatSessionModel> getAllSessions() {
     return _sessionsBox.values.toList()
