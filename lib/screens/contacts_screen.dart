@@ -25,6 +25,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
   List<UserModel> _friends = [];
   List<UserModel> _searchResults = [];
   List<FriendRequestModel> _pendingRequests = [];
+  Map<String, UserModel> _requestSenders = {};
   bool _isLoading = true;
   bool _isSearching = false;
   final _searchController = TextEditingController();
@@ -67,11 +68,19 @@ class _ContactsScreenState extends State<ContactsScreen> {
     setState(() => _isLoading = true);
 
     final friends = await _friendService.getFriends();
-    final requests = _friendService.getPendingRequests();
+    final requests = await _friendService.fetchPendingRequests();
+
+    // Fetch sender info for each request to show names
+    final senders = <String, UserModel>{};
+    for (final request in requests) {
+      final sender = await _friendService.getUserById(request.senderId);
+      if (sender != null) senders[request.senderId] = sender;
+    }
 
     setState(() {
       _friends = friends;
       _pendingRequests = requests;
+      _requestSenders = senders;
       _isLoading = false;
     });
   }
@@ -249,26 +258,31 @@ class _ContactsScreenState extends State<ContactsScreen> {
   }
 
   Widget _buildRequestTile(FriendRequestModel request) {
+    final sender = _requestSenders[request.senderId];
+    final name = sender?.displayName ?? sender?.username ?? 'Unknown';
+    final subtitle = sender?.username != null ? '@${sender!.username}' : request.senderId.substring(0, 8);
     return ListTile(
-      leading: const CircleAvatar(
+      leading: CircleAvatar(
         radius: 28,
-        child: Icon(Icons.person_add),
+        backgroundImage: sender?.photoURL != null ? NetworkImage(sender!.photoURL!) : null,
+        child: sender?.photoURL == null
+            ? Text(name[0].toUpperCase(), style: const TextStyle(fontSize: 18))
+            : null,
       ),
-      title: const Text(
-        'New Friend Request',
-        style: TextStyle(fontWeight: FontWeight.w600),
-      ),
-      subtitle: Text('From: ${request.senderId.substring(0, 8)}...'),
+      title: Text(name, style: const TextStyle(fontWeight: FontWeight.w600)),
+      subtitle: Text(subtitle),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           IconButton(
-            icon: const Icon(Icons.check, color: Colors.green),
+            icon: const Icon(Icons.check_circle, color: Colors.green, size: 30),
             onPressed: () => _acceptRequest(request.id),
+            tooltip: 'Accept',
           ),
           IconButton(
-            icon: const Icon(Icons.close, color: Colors.red),
+            icon: const Icon(Icons.cancel, color: Colors.red, size: 30),
             onPressed: () => _rejectRequest(request.id),
+            tooltip: 'Reject',
           ),
         ],
       ),

@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'services/auth_service.dart';
@@ -107,76 +109,72 @@ class AuthWrapper extends StatefulWidget {
 
 class _AuthWrapperState extends State<AuthWrapper> {
   final UserService _userService = UserService();
-  bool _checkingUsername = false;
-  bool? _hasUsername;
+  bool? _hasUsername; // null = still checking
+  String? _checkedUid;
+  StreamSubscription<User?>? _authSub;
 
   @override
   void initState() {
     super.initState();
-    _checkUsername();
-  }
-
-  Future<void> _checkUsername() async {
-    final user = widget.authService.currentUser;
-    if (user == null) return;
-
-    setState(() => _checkingUsername = true);
-
-    try {
-      final username = await _userService.getUsername(user.uid);
-
-      if (mounted) {
-        setState(() {
-          _hasUsername = username != null && username.isNotEmpty;
-          _checkingUsername = false;
-        });
+    _authSub = widget.authService.authStateChanges.listen((user) {
+      if (user == null) {
+        if (mounted) setState(() { _hasUsername = null; _checkedUid = null; });
+      } else if (user.uid != _checkedUid) {
+        _checkedUid = user.uid;
+        _checkUsername(user.uid);
       }
-    } catch (e) {
-      // If Firestore is unavailable, assume username is needed
-      // This prevents app from getting stuck on loading
-      if (mounted) {
-        setState(() {
-          _hasUsername = false;
-          _checkingUsername = false;
-        });
-      }
-
-    }
-  }
-
-  void _onUsernameSet() {
-    setState(() => _hasUsername = true);
+    });
   }
 
   @override
+  void dispose() {
+    _authSub?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _checkUsername(String uid) async {
+    if (mounted) setState(() => _hasUsername = null);
+    try {
+      final username = await _userService.getUsername(uid);
+      if (mounted) setState(() => _hasUsername = username != null && username.isNotEmpty);
+    } catch (_) {
+      if (mounted) setState(() => _hasUsername = false);
+    }
+  }
+
+  void _onUsernameSet() => setState(() => _hasUsername = true);
+
+  @override
   Widget build(BuildContext context) {
-    return StreamBuilder(
+    return StreamBuilder<User?>(
       stream: widget.authService.authStateChanges,
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting || _checkingUsername) {
-          return const Scaffold(
-            body: Center(
-              child: CircularProgressIndicator(),
-            ),
-          );
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(body: Center(child: CircularProgressIndicator()));
         }
 
-        if (snapshot.hasData && snapshot.data != null) {
-          if (_hasUsername == false) {
-            return UsernameSetupScreen(
-              authService: widget.authService,
-              userService: _userService,
-              onComplete: _onUsernameSet,
-            );
-          }
+        final user = snapshot.data;
+        if (user == null) {
+          return LoginScreen(authService: widget.authService);
+        }
 
-          return ChatListScreen(
-            localStorage: widget.localStorage,
+        // Still checking whether this user has a username
+        if (_hasUsername == null) {
+          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+        }
+
+        if (_hasUsername == false) {
+          return UsernameSetupScreen(
             authService: widget.authService,
+            userService: _userService,
+            onComplete: _onUsernameSet,
           );
         }
 
-        return LoginScreen(authService: widget.authService);
+        return ChatListScreen(
+          localStorage: widget.localStorage,
+          authService: widget.authService,
+        );
       },
     );
   }

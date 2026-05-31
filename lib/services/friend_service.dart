@@ -199,22 +199,23 @@ class FriendService {
 
   // Accept friend request
   Future<void> acceptFriendRequest(String requestId) async {
-    final userId = _authService.currentUser?.uid;
-    if (userId == null) return;
-    
-    await _firestore.collection('friend_requests').doc(requestId).update({
+    if (_authService.currentUser?.uid == null) return;
+
+    final doc = await _firestore.collection('friend_requests').doc(requestId).get();
+    if (!doc.exists) return;
+
+    await doc.reference.update({
       'status': 'accepted',
       'respondedAt': DateTime.now().millisecondsSinceEpoch,
     });
-    
+
+    final data = doc.data()!;
+    final senderId = data['senderId'] as String;
+    final receiverId = data['receiverId'] as String;
+
     await _localStorage.updateRequestStatus(requestId, RequestStatus.accepted);
-    
-    // Add to friends list for both users
-    final request = _localStorage.getSetting<FriendRequestModel>('request_$requestId');
-    if (request != null) {
-      await _addToFriendsList(request.senderId, request.receiverId);
-      await _addToFriendsList(request.receiverId, request.senderId);
-    }
+    await _addToFriendsList(senderId, receiverId);
+    await _addToFriendsList(receiverId, senderId);
   }
 
   // Reject friend request
@@ -223,7 +224,6 @@ class FriendService {
       'status': 'rejected',
       'respondedAt': DateTime.now().millisecondsSinceEpoch,
     });
-    
     await _localStorage.updateRequestStatus(requestId, RequestStatus.rejected);
   }
 
@@ -297,7 +297,34 @@ class FriendService {
     });
   }
 
-  // Get pending requests
+  // Get pending requests from Firestore (authoritative)
+  Future<List<FriendRequestModel>> fetchPendingRequests() async {
+    final userId = _authService.currentUser?.uid;
+    if (userId == null) return [];
+
+    final snapshot = await _firestore
+        .collection('friend_requests')
+        .where('receiverId', isEqualTo: userId)
+        .where('status', isEqualTo: 'pending')
+        .get();
+
+    final requests = <FriendRequestModel>[];
+    for (final doc in snapshot.docs) {
+      final request = FriendRequestModel.fromJson({'id': doc.id, ...doc.data()});
+      await _localStorage.saveFriendRequest(request);
+      requests.add(request);
+    }
+    return requests;
+  }
+
+  // Get user info by uid
+  Future<UserModel?> getUserById(String uid) async {
+    final doc = await _firestore.collection('users').doc(uid).get();
+    if (!doc.exists || doc.data() == null) return null;
+    return UserModel.fromJson({'uid': uid, ...doc.data()!});
+  }
+
+  // Get pending requests (local cache)
   List<FriendRequestModel> getPendingRequests() {
     return _localStorage.getPendingRequests();
   }

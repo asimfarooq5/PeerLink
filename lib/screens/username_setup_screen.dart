@@ -20,8 +20,28 @@ class UsernameSetupScreen extends StatefulWidget {
 
 class _UsernameSetupScreenState extends State<UsernameSetupScreen> {
   final _controller = TextEditingController();
-  bool _isLoading = false;
+  bool _isLoading = true;
   String? _error;
+  String? _existingUsername;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadExistingUsername();
+  }
+
+  Future<void> _loadExistingUsername() async {
+    final uid = widget.authService.currentUser?.uid;
+    if (uid == null) { setState(() => _isLoading = false); return; }
+    final username = await widget.userService.getUsername(uid);
+    if (mounted) {
+      setState(() {
+        _existingUsername = username;
+        if (username != null) _controller.text = username;
+        _isLoading = false;
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -47,13 +67,16 @@ class _UsernameSetupScreenState extends State<UsernameSetupScreen> {
       _error = null;
     });
 
-    final taken = await widget.userService.isUsernameTaken(username);
-    if (taken) {
-      setState(() {
-        _error = 'That username is already taken.';
-        _isLoading = false;
-      });
-      return;
+    // Only check availability if the username actually changed
+    if (username != _existingUsername) {
+      final taken = await widget.userService.isUsernameTaken(username);
+      if (taken) {
+        setState(() {
+          _error = 'That username is already taken.';
+          _isLoading = false;
+        });
+        return;
+      }
     }
 
     final user = widget.authService.currentUser;
@@ -77,9 +100,12 @@ class _UsernameSetupScreenState extends State<UsernameSetupScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isUpdating = _existingUsername != null;
     return Scaffold(
       body: SafeArea(
-        child: Padding(
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : Padding(
           padding: const EdgeInsets.all(24),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -87,10 +113,10 @@ class _UsernameSetupScreenState extends State<UsernameSetupScreen> {
             children: [
               const Icon(Icons.person_outline, size: 80, color: Colors.blue),
               const SizedBox(height: 24),
-              const Text(
-                'Choose a username',
+              Text(
+                isUpdating ? 'Update your username' : 'Choose a username',
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
               const Text(
@@ -134,7 +160,7 @@ class _UsernameSetupScreenState extends State<UsernameSetupScreen> {
                         height: 20, width: 20,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Text('Continue'),
+                    : Text(isUpdating ? 'Update' : 'Continue'),
               ),
             ],
           ),
