@@ -5,6 +5,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'services/auth_service.dart';
 import 'services/local_storage_service.dart';
+import 'services/notification_service.dart';
 import 'services/security_service.dart';
 import 'services/user_service.dart';
 import 'screens/login_screen.dart';
@@ -14,7 +15,7 @@ import 'widgets/app_lock_wrapper.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
+
   // Initialize Firebase
   try {
     await Firebase.initializeApp(
@@ -23,22 +24,26 @@ void main() async {
   } on FirebaseException catch (e) {
     if (e.code != 'duplicate-app') rethrow;
   }
-  
+
+  // Initialize notifications (permissions + local notification channel)
+  await NotificationService.instance.initialize();
+  await NotificationService.instance.requestPermission();
+
   // Initialize local storage
   final localStorage = LocalStorageService();
   await localStorage.initialize();
-  
+
   // Initialize auth service
   final authService = AuthService();
   await authService.initialize();
-  
+
   runApp(MyApp(
     authService: authService,
     localStorage: localStorage,
   ));
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   final AuthService authService;
   final LocalStorageService localStorage;
 
@@ -49,8 +54,28 @@ class MyApp extends StatelessWidget {
   });
 
   @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  final _navigatorKey = GlobalKey<NavigatorState>();
+
+  @override
+  void initState() {
+    super.initState();
+    NotificationService.navigatorKey = _navigatorKey;
+    // Navigate to the relevant chat when a notification is tapped
+    NotificationService.instance.notificationTapStream.listen((senderId) {
+      // TODO: resolve peer name from Firestore and push ChatScreen
+      // For now just log — navigation wiring can be added once the
+      // user model lookup is in place.
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: _navigatorKey,
       title: 'PeerLink',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
@@ -83,10 +108,10 @@ class MyApp extends StatelessWidget {
       ),
       themeMode: ThemeMode.system,
       home: AppLockWrapper(
-        securityService: SecurityService(localStorage),
+        securityService: SecurityService(widget.localStorage),
         child: AuthWrapper(
-          authService: authService,
-          localStorage: localStorage,
+          authService: widget.authService,
+          localStorage: widget.localStorage,
         ),
       ),
     );

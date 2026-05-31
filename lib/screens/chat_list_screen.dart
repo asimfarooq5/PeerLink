@@ -32,6 +32,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
   }
 
   void _loadSessions() {
+    if (!mounted) return;
     setState(() {
       _sessions = widget.localStorage.getAllSessions();
       _isLoading = false;

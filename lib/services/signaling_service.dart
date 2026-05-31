@@ -52,34 +52,17 @@ class SignalingService {
   SignalingService(this._authService);
 
   Future<void> initialize() async {
-    // Request notification permissions
-    await _messaging.requestPermission(
-      alert: true,
-      badge: true,
-      sound: true,
-    );
-    
-    // Get FCM token
+    // Get and store FCM token
     final token = await _messaging.getToken();
     if (token != null) {
       await _authService.updateFCMToken(token);
       await _updateUserToken(token);
     }
-    
-    // Listen for token refresh
-    _messaging.onTokenRefresh.listen((token) async {
-      await _authService.updateFCMToken(token);
-      await _updateUserToken(token);
+    _messaging.onTokenRefresh.listen((t) async {
+      await _authService.updateFCMToken(t);
+      await _updateUserToken(t);
     });
-    
-    // Handle foreground messages
-    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-      _handleWakeupMessage(message);
-    });
-    
-    // Handle background/terminated messages
-    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-    
+
     // Listen for signaling messages
     _listenForSignaling();
   }
@@ -111,24 +94,17 @@ class SignalingService {
           final data = change.doc.data();
           if (data != null) {
             final message = SignalingMessage.fromJson(data);
-            _signalController.add(message);
-            
-            // Delete processed message
+            // Always delete — even stale messages should not linger
             change.doc.reference.delete();
+            // Ignore messages older than 30 s (from previous sessions)
+            if (DateTime.now().difference(message.timestamp).inSeconds > 30) {
+              continue;
+            }
+            _signalController.add(message);
           }
         }
       }
     });
-  }
-
-  void _handleWakeupMessage(RemoteMessage message) {
-    final data = message.data;
-    final senderId = data['senderId'] as String?;
-    final type = data['type'] as String?;
-    
-    if (senderId != null && type == 'wakeup') {
-      _wakeupController.add(senderId);
-    }
   }
 
   Future<void> sendSignal(
@@ -209,8 +185,3 @@ class SignalingService {
   }
 }
 
-// Background message handler
-@pragma('vm:entry-point')
-Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  print('Handling background message: ${message.messageId}');
-}
