@@ -72,15 +72,19 @@ class WebRTCService {
     _peerConnection = await createPeerConnection(_configuration);
 
     _peerConnection!.onConnectionState = (state) {
-      _connectionStateController.add(state);
-      if (state == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected ||
-          state == RTCPeerConnectionState.RTCPeerConnectionStateFailed) {
+      if (!_connectionStateController.isClosed) {
+        _connectionStateController.add(state);
+      }
+      // DISCONNECTED is temporary and self-recovers; only FAILED is terminal
+      if (state == RTCPeerConnectionState.RTCPeerConnectionStateFailed) {
         _handleConnectionLost();
       }
     };
 
     _peerConnection!.onIceCandidate = (candidate) {
-      _iceCandidateController.add(candidate);
+      if (!_iceCandidateController.isClosed) {
+        _iceCandidateController.add(candidate);
+      }
     };
 
     _peerConnection!.onDataChannel = (channel) {
@@ -90,8 +94,7 @@ class WebRTCService {
   }
 
   void _handleConnectionLost() {
-    // Emit before teardown so the UI updates before the stream closes
-    _reconnectController.add(null);
+    if (!_reconnectController.isClosed) _reconnectController.add(null);
     _teardown();
   }
 
