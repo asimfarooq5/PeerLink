@@ -81,41 +81,47 @@ class ChatService {
   // Handle incoming signaling messages
   Future<void> _handleSignalingMessage(SignalingMessage message) async {
     if (message.receiverId != _authService.currentUser?.uid) return;
-    
-    switch (message.type) {
-      case 'offer':
-        await _handleOffer(message.senderId, message.data);
-        break;
-      case 'answer':
-        await _handleAnswer(message.data);
-        break;
-      case 'ice':
-        await _handleIceCandidate(message.data);
-        break;
-      case 'wakeup':
-        // Auto-accept connection from known friends
-        await _handleWakeup(message.senderId);
-        break;
-      case 'typing':
-        final data = message.data as Map<String, dynamic>;
-        _typingController.add({
-          'peerId': message.senderId,
-          'isTyping': (data['isTyping'] as bool?) ?? false,
-        });
-        break;
+
+    try {
+      switch (message.type) {
+        case 'offer':
+          await _handleOffer(message.senderId, message.data);
+          break;
+        case 'answer':
+          await _handleAnswer(message.data);
+          break;
+        case 'ice':
+          await _handleIceCandidate(message.data);
+          break;
+        case 'wakeup':
+          await _handleWakeup(message.senderId);
+          break;
+        case 'typing':
+          final data = message.data as Map<String, dynamic>;
+          _typingController.add({
+            'peerId': message.senderId,
+            'isTyping': (data['isTyping'] as bool?) ?? false,
+          });
+          break;
+      }
+    } catch (e) {
+      // Swallow signaling errors — stale messages from previous sessions
+      // should not crash the app
     }
   }
 
   Future<void> _handleOffer(String senderId, dynamic data) async {
+    // Ignore offers that aren't from the current chat peer
+    if (_currentPeerId != null && _currentPeerId != senderId) return;
     _currentPeerId = senderId;
-    
+
     await _webRTCService.initialize();
-    
+
     final offer = RTCSessionDescription(
       data['sdp'] as String,
       data['type'] as String,
     );
-    
+
     final answer = await _webRTCService.createAnswer(offer);
     await _signalingService.sendAnswer(senderId, answer);
   }
@@ -125,7 +131,6 @@ class ChatService {
       data['sdp'] as String,
       data['type'] as String,
     );
-    
     await _webRTCService.setRemoteDescription(answer);
   }
 
@@ -135,16 +140,14 @@ class ChatService {
       data['sdpMid'] as String?,
       data['sdpMLineIndex'] as int?,
     );
-    
     await _webRTCService.addIceCandidate(candidate);
   }
 
   Future<void> _handleWakeup(String senderId) async {
-    // Check if sender is a friend by looking up in local storage
-    final user = _localStorage.getUser(senderId);
-    
-    if (user != null) {
-      await connectToPeer(senderId);
+    // Prepare to receive an offer from the initiator — do NOT create an
+    // offer here; that would cause both sides to offer simultaneously.
+    if (_currentPeerId == senderId) {
+      await _webRTCService.initialize();
     }
   }
 

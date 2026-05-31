@@ -8,7 +8,10 @@ class WebRTCService {
   RTCPeerConnection? _peerConnection;
   RTCDataChannel? _dataChannel;
   MediaStream? _localStream;
-  
+
+  // Buffer ICE candidates that arrive before the peer connection is ready
+  final List<RTCIceCandidate> _pendingCandidates = [];
+
   final _messageController = StreamController<MessageModel>.broadcast();
   final _connectionStateController = StreamController<RTCPeerConnectionState>.broadcast();
   final _fileProgressController = StreamController<Map<String, dynamic>>.broadcast();
@@ -41,27 +44,24 @@ class WebRTCService {
       },
     ],
   };
-  
-  final Map<String, dynamic> _dataChannelConstraints = {
-    'ordered': true,
-    'maxRetransmits': 30,
-  };
 
+  // Idempotent — safe to call multiple times
   Future<void> initialize() async {
+    if (_peerConnection != null) return;
     await _createPeerConnection();
   }
 
   Future<void> _createPeerConnection() async {
     _peerConnection = await createPeerConnection(_configuration);
-    
+
     _peerConnection!.onConnectionState = (state) {
       _connectionStateController.add(state);
     };
-    
+
     _peerConnection!.onIceCandidate = (candidate) {
       _iceCandidateController.add(candidate);
     };
-    
+
     _peerConnection!.onDataChannel = (channel) {
       _dataChannel = channel;
       _setupDataChannel();
@@ -76,7 +76,7 @@ class WebRTCService {
         ..maxRetransmits = 30,
     );
     _setupDataChannel();
-    
+
     final offer = await _peerConnection!.createOffer();
     await _peerConnection!.setLocalDescription(offer);
     return offer;
@@ -84,6 +84,7 @@ class WebRTCService {
 
   Future<RTCSessionDescription> createAnswer(RTCSessionDescription offer) async {
     await _peerConnection!.setRemoteDescription(offer);
+    await _applyPendingCandidates();
     final answer = await _peerConnection!.createAnswer();
     await _peerConnection!.setLocalDescription(answer);
     return answer;
@@ -91,19 +92,42 @@ class WebRTCService {
 
   Future<void> setRemoteDescription(RTCSessionDescription description) async {
     await _peerConnection!.setRemoteDescription(description);
+    await _applyPendingCandidates();
   }
 
   Future<void> addIceCandidate(RTCIceCandidate candidate) async {
-    await _peerConnection!.addCandidate(candidate);
+    if (_peerConnection == null) {
+      _pendingCandidates.add(candidate);
+      return;
+    }
+    // Only add candidates once remote description is set
+    final sigState = await _peerConnection!.getSignalingState();
+    if (sigState == RTCSignalingState.RTCSignalingStateStable ||
+        sigState == RTCSignalingState.RTCSignalingStateHaveLocalOffer ||
+        sigState == RTCSignalingState.RTCSignalingStateHaveRemoteOffer) {
+      try {
+        await _peerConnection!.addCandidate(candidate);
+      } catch (_) {
+        // Ignore stale candidates from previous sessions
+      }
+    } else {
+      _pendingCandidates.add(candidate);
+    }
+  }
+
+  Future<void> _applyPendingCandidates() async {
+    final candidates = List<RTCIceCandidate>.from(_pendingCandidates);
+    _pendingCandidates.clear();
+    for (final candidate in candidates) {
+      try {
+        await _peerConnection!.addCandidate(candidate);
+      } catch (_) {}
+    }
   }
 
   void _setupDataChannel() {
     _dataChannel!.onMessage = (data) {
       _handleIncomingMessage(data);
-    };
-    
-    _dataChannel!.onDataChannelState = (state) {
-      print('Data channel state: $state');
     };
   }
 
@@ -118,13 +142,11 @@ class WebRTCService {
   }
 
   void _handleBinaryData(Uint8List data) {
-    // Handle file chunks
     final headerLength = data[0];
     final headerBytes = data.sublist(1, 1 + headerLength);
     final header = jsonDecode(utf8.decode(headerBytes));
-    
     final fileData = data.sublist(1 + headerLength);
-    
+
     _fileProgressController.add({
       'fileId': header['fileId'],
       'chunkIndex': header['chunkIndex'],
@@ -138,60 +160,42 @@ class WebRTCService {
     if (_dataChannel?.state != RTCDataChannelState.RTCDataChannelOpen) {
       throw Exception('Data channel not open');
     }
-    
-    final data = RTCDataChannelMessage(jsonEncode(message.toJson()));
-    await _dataChannel!.send(data);
+    await _dataChannel!.send(RTCDataChannelMessage(jsonEncode(message.toJson())));
   }
 
   Future<void> sendFileChunk(String fileId, int chunkIndex, int totalChunks, Uint8List chunk) async {
     if (_dataChannel?.state != RTCDataChannelState.RTCDataChannelOpen) {
       throw Exception('Data channel not open');
     }
-    
+
     final header = jsonEncode({
       'fileId': fileId,
       'chunkIndex': chunkIndex,
       'totalChunks': totalChunks,
     });
-    
     final headerBytes = utf8.encode(header);
     final data = Uint8List(1 + headerBytes.length + chunk.length);
-    
     data[0] = headerBytes.length;
     data.setRange(1, 1 + headerBytes.length, headerBytes);
     data.setRange(1 + headerBytes.length, data.length, chunk);
-    
-    final message = RTCDataChannelMessage.fromBinary(data);
-    await _dataChannel!.send(message);
+
+    await _dataChannel!.send(RTCDataChannelMessage.fromBinary(data));
   }
 
   Future<MediaStream> getUserMedia({bool video = true, bool audio = true}) async {
-    final mediaConstraints = <String, dynamic>{
+    _localStream = await navigator.mediaDevices.getUserMedia({
       'audio': audio,
-      'video': video
-          ? {'facingMode': 'user'}
-          : false,
-    };
-    
-    _localStream = await navigator.mediaDevices.getUserMedia(mediaConstraints);
+      'video': video ? {'facingMode': 'user'} : false,
+    });
     return _localStream!;
   }
 
-  Future<void> startCall(String peerId, {bool video = true}) async {
-    final stream = await getUserMedia(video: video);
-    
-    for (final track in stream.getTracks()) {
-      _peerConnection!.addTrack(track, stream);
-    }
-    
-    _peerConnection!.onTrack = (event) {
-      // Handle remote track - emit to UI
-    };
-  }
-
   Future<void> dispose() async {
+    _pendingCandidates.clear();
     await _dataChannel?.close();
     await _peerConnection?.close();
+    _peerConnection = null;
+    _dataChannel = null;
     await _localStream?.dispose();
 
     _messageController.close();
