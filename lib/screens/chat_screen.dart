@@ -78,11 +78,25 @@ class _ChatScreenState extends State<ChatScreen> {
     
     // Listen for connection state
     webRTCService.connectionStateStream.listen((state) {
-      if (mounted) {
-        setState(() {
-          _isConnected = state == RTCPeerConnectionState.RTCPeerConnectionStateConnected;
-        });
+      if (!mounted) return;
+      setState(() {
+        _isConnected = state == RTCPeerConnectionState.RTCPeerConnectionStateConnected;
+      });
+      // Reload messages when reconnected so nothing is missed
+      if (state == RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
+        setState(() => _messages = _chatService.getChatHistory(widget.peerId));
+        _scrollToBottom();
       }
+    });
+
+    // On disconnect: mark offline and reload from local storage so any
+    // messages saved before the drop are still visible
+    webRTCService.reconnectStream.listen((_) {
+      if (!mounted) return;
+      setState(() {
+        _isConnected = false;
+        _messages = _chatService.getChatHistory(widget.peerId);
+      });
     });
     
     // Listen for typing indicators

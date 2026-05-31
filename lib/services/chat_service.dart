@@ -27,6 +27,9 @@ class ChatService {
   
   String? _currentPeerId;
   bool _isTyping = false;
+  // True on the device that opened the chat and called connectToPeer.
+  // Only the initiator auto-reconnects when the connection drops.
+  bool _isInitiator = false;
 
   ChatService(
     this._authService,
@@ -36,46 +39,45 @@ class ChatService {
   );
 
   Future<void> initialize() async {
-    // Listen for WebRTC messages
     _webRTCService.messageStream.listen(_handleIncomingMessage);
-
-    // Listen for signaling
     _signalingService.signalStream.listen(_handleSignalingMessage);
 
-    // Forward ICE candidates to peer via signaling
     _webRTCService.iceCandidateStream.listen((candidate) {
       if (_currentPeerId != null) {
         _signalingService.sendIceCandidate(_currentPeerId!, candidate);
       }
     });
 
-    // Listen for connection state changes
     _webRTCService.connectionStateStream.listen((state) {
-      _connectionStateController.add({
-        'peerId': _currentPeerId,
-        'state': state,
-      });
+      _connectionStateController.add({'peerId': _currentPeerId, 'state': state});
     });
 
-    // Listen for file progress
-    _webRTCService.fileProgressStream.listen((progress) {
-      // Handle file transfer progress
+    // Auto-reconnect: when the connection drops the initiator re-offers
+    _webRTCService.reconnectStream.listen((_) async {
+      if (_isInitiator && _currentPeerId != null) {
+        await _reconnect();
+      }
     });
   }
 
-  // Connect to peer
   Future<void> connectToPeer(String peerId) async {
+    _isInitiator = true;
     _currentPeerId = peerId;
-    
-    // Send wakeup signal
     await _signalingService.sendWakeup(peerId);
-    
-    // Initialize WebRTC
     await _webRTCService.initialize();
-    
-    // Create and send offer
     final offer = await _webRTCService.createOffer();
     await _signalingService.sendOffer(peerId, offer);
+  }
+
+  Future<void> _reconnect() async {
+    final peerId = _currentPeerId;
+    if (peerId == null) return;
+    try {
+      await _signalingService.sendWakeup(peerId);
+      await _webRTCService.initialize();
+      final offer = await _webRTCService.createOffer();
+      await _signalingService.sendOffer(peerId, offer);
+    } catch (_) {}
   }
 
   // Handle incoming signaling messages
@@ -111,17 +113,14 @@ class ChatService {
   }
 
   Future<void> _handleOffer(String senderId, dynamic data) async {
-    // Ignore offers that aren't from the current chat peer
     if (_currentPeerId != null && _currentPeerId != senderId) return;
     _currentPeerId = senderId;
 
-    await _webRTCService.initialize();
+    // Always reset before accepting a new offer so a stale peer connection
+    // from a previous session or a failed attempt never blocks reconnection.
+    await _webRTCService.resetAndInitialize();
 
-    final offer = RTCSessionDescription(
-      data['sdp'] as String,
-      data['type'] as String,
-    );
-
+    final offer = RTCSessionDescription(data['sdp'] as String, data['type'] as String);
     final answer = await _webRTCService.createAnswer(offer);
     await _signalingService.sendAnswer(senderId, answer);
   }

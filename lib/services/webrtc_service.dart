@@ -9,18 +9,20 @@ class WebRTCService {
   RTCDataChannel? _dataChannel;
   MediaStream? _localStream;
 
-  // Buffer ICE candidates that arrive before the peer connection is ready
   final List<RTCIceCandidate> _pendingCandidates = [];
 
   final _messageController = StreamController<MessageModel>.broadcast();
   final _connectionStateController = StreamController<RTCPeerConnectionState>.broadcast();
   final _fileProgressController = StreamController<Map<String, dynamic>>.broadcast();
   final _iceCandidateController = StreamController<RTCIceCandidate>.broadcast();
+  // Fires when a connection is lost — caller should reconnect if initiator
+  final _reconnectController = StreamController<void>.broadcast();
 
   Stream<MessageModel> get messageStream => _messageController.stream;
   Stream<RTCPeerConnectionState> get connectionStateStream => _connectionStateController.stream;
   Stream<Map<String, dynamic>> get fileProgressStream => _fileProgressController.stream;
   Stream<RTCIceCandidate> get iceCandidateStream => _iceCandidateController.stream;
+  Stream<void> get reconnectStream => _reconnectController.stream;
 
   final Map<String, dynamic> _configuration = {
     'iceServers': [
@@ -45,10 +47,25 @@ class WebRTCService {
     ],
   };
 
-  // Idempotent — safe to call multiple times
+  // Creates a peer connection if one doesn't exist yet (idempotent).
   Future<void> initialize() async {
     if (_peerConnection != null) return;
     await _createPeerConnection();
+  }
+
+  // Tears down the current peer connection and creates a fresh one.
+  // Call this before accepting a new offer so stale state never blocks it.
+  Future<void> resetAndInitialize() async {
+    await _teardown();
+    await _createPeerConnection();
+  }
+
+  Future<void> _teardown() async {
+    await _dataChannel?.close();
+    await _peerConnection?.close();
+    _peerConnection = null;
+    _dataChannel = null;
+    _pendingCandidates.clear();
   }
 
   Future<void> _createPeerConnection() async {
@@ -56,6 +73,10 @@ class WebRTCService {
 
     _peerConnection!.onConnectionState = (state) {
       _connectionStateController.add(state);
+      if (state == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected ||
+          state == RTCPeerConnectionState.RTCPeerConnectionStateFailed) {
+        _handleConnectionLost();
+      }
     };
 
     _peerConnection!.onIceCandidate = (candidate) {
@@ -66,6 +87,12 @@ class WebRTCService {
       _dataChannel = channel;
       _setupDataChannel();
     };
+  }
+
+  void _handleConnectionLost() {
+    // Emit before teardown so the UI updates before the stream closes
+    _reconnectController.add(null);
+    _teardown();
   }
 
   Future<RTCSessionDescription> createOffer() async {
@@ -100,27 +127,19 @@ class WebRTCService {
       _pendingCandidates.add(candidate);
       return;
     }
-    // Only add candidates once remote description is set
-    final sigState = await _peerConnection!.getSignalingState();
-    if (sigState == RTCSignalingState.RTCSignalingStateStable ||
-        sigState == RTCSignalingState.RTCSignalingStateHaveLocalOffer ||
-        sigState == RTCSignalingState.RTCSignalingStateHaveRemoteOffer) {
-      try {
-        await _peerConnection!.addCandidate(candidate);
-      } catch (_) {
-        // Ignore stale candidates from previous sessions
-      }
-    } else {
-      _pendingCandidates.add(candidate);
+    try {
+      await _peerConnection!.addCandidate(candidate);
+    } catch (_) {
+      // Ignore stale candidates
     }
   }
 
   Future<void> _applyPendingCandidates() async {
     final candidates = List<RTCIceCandidate>.from(_pendingCandidates);
     _pendingCandidates.clear();
-    for (final candidate in candidates) {
+    for (final c in candidates) {
       try {
-        await _peerConnection!.addCandidate(candidate);
+        await _peerConnection!.addCandidate(c);
       } catch (_) {}
     }
   }
@@ -168,11 +187,7 @@ class WebRTCService {
       throw Exception('Data channel not open');
     }
 
-    final header = jsonEncode({
-      'fileId': fileId,
-      'chunkIndex': chunkIndex,
-      'totalChunks': totalChunks,
-    });
+    final header = jsonEncode({'fileId': fileId, 'chunkIndex': chunkIndex, 'totalChunks': totalChunks});
     final headerBytes = utf8.encode(header);
     final data = Uint8List(1 + headerBytes.length + chunk.length);
     data[0] = headerBytes.length;
@@ -191,16 +206,12 @@ class WebRTCService {
   }
 
   Future<void> dispose() async {
-    _pendingCandidates.clear();
-    await _dataChannel?.close();
-    await _peerConnection?.close();
-    _peerConnection = null;
-    _dataChannel = null;
+    await _teardown();
     await _localStream?.dispose();
-
     _messageController.close();
     _connectionStateController.close();
     _fileProgressController.close();
     _iceCandidateController.close();
+    _reconnectController.close();
   }
 }
