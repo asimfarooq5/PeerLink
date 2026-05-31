@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
@@ -35,6 +36,7 @@ class _ChatScreenState extends State<ChatScreen> {
   List<MessageModel> _messages = [];
   bool _isConnected = false;
   bool _isTyping = false;
+  Timer? _typingResetTimer;
 
   @override
   void initState() {
@@ -86,9 +88,17 @@ class _ChatScreenState extends State<ChatScreen> {
     // Listen for typing indicators
     _chatService.typingStream.listen((typingData) {
       if (typingData['peerId'] == widget.peerId && mounted) {
-        setState(() {
-          _isTyping = typingData['isTyping'] ?? false;
-        });
+        final isTyping = (typingData['isTyping'] as bool?) ?? false;
+        _typingResetTimer?.cancel();
+        if (isTyping) {
+          setState(() => _isTyping = true);
+          // Auto-clear after 3 s in case the "stopped typing" signal is lost
+          _typingResetTimer = Timer(const Duration(seconds: 3), () {
+            if (mounted) setState(() => _isTyping = false);
+          });
+        } else {
+          setState(() => _isTyping = false);
+        }
       }
     });
     
@@ -193,6 +203,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
+    _typingResetTimer?.cancel();
     _messageController.dispose();
     _scrollController.dispose();
     _chatService.dispose();

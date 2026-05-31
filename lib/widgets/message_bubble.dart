@@ -33,7 +33,9 @@ class MessageBubble extends StatelessWidget {
               decoration: BoxDecoration(
                 color: isMe
                     ? Theme.of(context).primaryColor
-                    : Theme.of(context).cardColor,
+                    : Theme.of(context).brightness == Brightness.dark
+                        ? Colors.grey.shade800
+                        : Colors.grey.shade100,
                 borderRadius: BorderRadius.only(
                   topLeft: const Radius.circular(16),
                   topRight: const Radius.circular(16),
@@ -89,7 +91,9 @@ class MessageBubble extends StatelessWidget {
         return Text(
           message.content ?? '',
           style: TextStyle(
-            color: isMe ? Colors.white : Colors.black87,
+            color: isMe
+                ? Colors.white
+                : Theme.of(context).colorScheme.onSurface,
             fontSize: 15,
           ),
         );
@@ -101,7 +105,7 @@ class MessageBubble extends StatelessWidget {
         return _buildVideoContent();
         
       case MessageType.file:
-        return _buildFileContent();
+        return _buildFileContent(context);
         
       case MessageType.audio:
         return _buildAudioContent();
@@ -113,7 +117,9 @@ class MessageBubble extends StatelessWidget {
         return Text(
           message.content ?? '',
           style: TextStyle(
-            color: isMe ? Colors.white : Colors.black87,
+            color: isMe
+                ? Colors.white
+                : Theme.of(context).colorScheme.onSurface,
           ),
         );
     }
@@ -161,7 +167,7 @@ class MessageBubble extends StatelessWidget {
     );
   }
 
-  Widget _buildFileContent() {
+  Widget _buildFileContent(BuildContext context) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -177,7 +183,9 @@ class MessageBubble extends StatelessWidget {
               Text(
                 message.fileName ?? 'File',
                 style: TextStyle(
-                  color: isMe ? Colors.white : Colors.black87,
+                  color: isMe
+                      ? Colors.white
+                      : Theme.of(context).colorScheme.onSurface,
                   fontWeight: FontWeight.w500,
                 ),
                 maxLines: 1,
