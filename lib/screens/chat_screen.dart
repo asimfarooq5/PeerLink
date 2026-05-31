@@ -58,10 +58,12 @@ class _ChatScreenState extends State<ChatScreen> {
     
     // Load existing messages
     _messages = _chatService.getChatHistory(widget.peerId);
-    
+    if (mounted) setState(() {});
+    _scrollToBottom();
+
     // Connect to peer
     await _chatService.connectToPeer(widget.peerId);
-    
+
     // Listen for new messages
     webRTCService.messageStream.listen((message) {
       if (mounted) {
@@ -94,13 +96,16 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _scrollToBottom() {
-    if (_scrollController.hasClients) {
-      _scrollController.animateTo(
-        _scrollController.position.maxScrollExtent,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut,
-      );
-    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients &&
+          _scrollController.position.hasContentDimensions) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
   }
 
   Future<void> _sendMessage() async {
